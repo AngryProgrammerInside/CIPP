@@ -50,7 +50,12 @@ import { useLazyEditDnsConfigQuery, useLazyGetDnsConfigQuery } from 'src/store/a
 import { useDispatch, useSelector } from 'react-redux'
 import { cellBooleanFormatter, CellTip, CellTipIcon, CippTable } from 'src/components/tables'
 import { CippPage, CippPageList } from 'src/components/layout'
-import { RFFCFormSwitch, RFFCFormInput, RFFCFormSelect, RFFCFormCheck } from 'src/components/forms'
+import {
+  RFFCFormSwitch,
+  RFFCFormInput,
+  RFFCFormSelect,
+  RFFSelectSearch,
+} from 'src/components/forms'
 import { Form } from 'react-final-form'
 import useConfirmModal from 'src/hooks/useConfirmModal'
 import { setCurrentTenant } from 'src/store/features/app'
@@ -131,6 +136,9 @@ const GeneralSettings = () => {
   const [selectedTenants, setSelectedTenants] = useState([])
   const [showMaxSelected, setShowMaxSelected] = useState(false)
   const [tokenOffcanvasVisible, setTokenOffcanvasVisible] = useState(false)
+  const [runBackup, RunBackupResult] = useLazyGenericGetRequestQuery()
+  const [restoreBackup, restoreBackupResult] = useLazyGenericPostRequestQuery()
+
   const maxSelected = 2
   const tenantSelectorRef = useRef(null)
 
@@ -243,7 +251,23 @@ const GeneralSettings = () => {
     pagination: false,
     subheader: false,
   }
-
+  const downloadTxtFile = (data) => {
+    const txtdata = [JSON.stringify(RunBackupResult.data.backup)]
+    const file = new Blob(txtdata, { type: 'text/plain' })
+    const element = document.createElement('a')
+    element.href = URL.createObjectURL(file)
+    element.download = 'CIPP-Backup' + Date.now() + '.json'
+    document.body.appendChild(element)
+    element.click()
+  }
+  const inputRef = useRef(null)
+  const handleChange = (e) => {
+    const fileReader = new FileReader()
+    fileReader.readAsText(e.target.files[0], 'UTF-8')
+    fileReader.onload = (e) => {
+      restoreBackup({ path: '/api/ExecRestoreBackup', values: e.target.result })
+    }
+  }
   return (
     <div>
       <CRow className="mb-3">
@@ -356,50 +380,120 @@ const GeneralSettings = () => {
               <CCardTitle>Tenant Access Check</CCardTitle>
             </CCardHeader>
             <CCardBody>
-              <div className="mb-3">
-                Click the button below to start a tenant access check. You can select multiple a
-                maximum of {maxSelected + 1} tenants is recommended.
-              </div>
+              <CRow className="mb-3">
+                <CCol>
+                  <div className="mb-3">
+                    Click the button below to start a tenant access check. You can select multiple a
+                    maximum of {maxSelected + 1} tenants is recommended.
+                  </div>
 
-              <TenantSelectorMultiple
-                ref={tenantSelectorRef}
-                values={selectedTenants}
-                onChange={(value) =>
-                  handleSetSelectedTenants(
-                    value.map((val) => {
-                      return val.value
-                    }),
-                  )
-                }
-              />
-              {showMaxSelected && (
-                <CCallout color="warning">
-                  A maximum of {maxSelected + 1} tenants is recommended.
-                </CCallout>
-              )}
-              <br />
-              <CButton
-                onClick={() => handleCheckAccess()}
-                disabled={accessCheckResult.isFetching || selectedTenants.length < 1}
-              >
-                {accessCheckResult.isFetching && (
-                  <FontAwesomeIcon icon={faCircleNotch} spin className="me-2" size="1x" />
-                )}
-                Run access check
-              </CButton>
-              {accessCheckResult.isSuccess && (
-                <CippTable
-                  reportName="none"
-                  columns={checkAccessColumns}
-                  tableProps={tableProps}
-                  data={accessCheckResult.data.Results}
-                />
-              )}
+                  <TenantSelectorMultiple
+                    ref={tenantSelectorRef}
+                    values={selectedTenants}
+                    onChange={(value) =>
+                      handleSetSelectedTenants(
+                        value.map((val) => {
+                          return val.value
+                        }),
+                      )
+                    }
+                  />
+                  {showMaxSelected && (
+                    <CCallout color="warning">
+                      A maximum of {maxSelected + 1} tenants is recommended.
+                    </CCallout>
+                  )}
+                </CCol>
+              </CRow>
+              <CRow className="mb-3">
+                <CCol>
+                  <CButton
+                    onClick={() => handleCheckAccess()}
+                    disabled={accessCheckResult.isFetching || selectedTenants.length < 1}
+                  >
+                    {accessCheckResult.isFetching && (
+                      <FontAwesomeIcon icon={faCircleNotch} spin className="me-2" size="1x" />
+                    )}
+                    Run access check
+                  </CButton>
+                </CCol>
+              </CRow>
+              <CRow>
+                <CCol>
+                  {accessCheckResult.isSuccess && (
+                    <CippTable
+                      reportName="none"
+                      columns={checkAccessColumns}
+                      tableProps={tableProps}
+                      data={accessCheckResult.data.Results}
+                    />
+                  )}
+                </CCol>
+              </CRow>
             </CCardBody>
           </CCard>
         </CCol>
         <CCol>
           <DNSSettings />
+        </CCol>
+      </CRow>
+      <CRow>
+        <CCol>
+          <CCard className="h-100">
+            <CCardHeader>
+              <CCardTitle>Run Backup</CCardTitle>
+            </CCardHeader>
+            <CCardBody>
+              Click the button below to start a backup of all settings <br />
+              <CButton
+                onClick={() => runBackup({ path: '/api/ExecRunBackup' })}
+                disabled={RunBackupResult.isFetching}
+                className="me-3 mt-3"
+              >
+                {RunBackupResult.isFetching && (
+                  <FontAwesomeIcon icon={faCircleNotch} spin className="me-2" size="1x" />
+                )}
+                Run backup
+              </CButton>
+              <input
+                ref={inputRef}
+                type="file"
+                accept="json/*"
+                style={{ display: 'none' }}
+                id="contained-button-file"
+                onChange={(e) => handleChange(e)}
+              />
+              <CButton
+                type="file"
+                name="file"
+                onClick={() => inputRef.current.click()}
+                disabled={restoreBackupResult.isFetching}
+                className="me-3 mt-3"
+              >
+                {restoreBackupResult.isFetching && (
+                  <FontAwesomeIcon icon={faCircleNotch} spin className="me-2" size="1x" />
+                )}
+                Restore backup
+              </CButton>
+              {restoreBackupResult.isSuccess && (
+                <>
+                  <CCallout color="success">{restoreBackupResult.data.Results}</CCallout>
+                </>
+              )}
+              {RunBackupResult.isSuccess && (
+                <>
+                  <CCallout color="success">
+                    <CButton
+                      onClick={() => downloadTxtFile(RunBackupResult.data.backup)}
+                      className="m-1"
+                    >
+                      Download Backup
+                    </CButton>
+                  </CCallout>
+                </>
+              )}
+            </CCardBody>
+          </CCard>
         </CCol>
       </CRow>
     </div>
@@ -438,7 +532,12 @@ const ExcludedTenantsSettings = () => {
         refreshPermissions({ path: `/api/ExecCPVPermissions?TenantFilter=${domain.customerId}` }),
     })
   const handleConfirmExcludeTenant = (tenant) => {
-    addExcludeTenant(tenant)
+    ModalService.confirm({
+      title: 'Exclude Tenant',
+      body: <div>Are you sure you want to exclude this tenant?</div>,
+      onConfirm: () => addExcludeTenant(tenant),
+    })
+
       .unwrap()
       .then(() => {
         dispatch(setCurrentTenant({}))
@@ -501,7 +600,7 @@ const ExcludedTenantsSettings = () => {
             size="sm"
             variant="ghost"
             color="danger"
-            onClick={() => handleExcludeTenant(row)}
+            onClick={() => handleConfirmExcludeTenant({ value: row.customerId })}
           >
             <FontAwesomeIcon icon={faEyeSlash} href="" />
           </CButton>
@@ -740,18 +839,13 @@ const SecuritySettings = () => {
 }
 
 const NotificationsSettings = () => {
-  //to post settings
   const [configNotifications, notificationConfigResult] = useLazyExecNotificationConfigQuery()
 
+  const [listNotification, notificationListResult] = useLazyListNotificationConfigQuery()
   const onSubmit = (values) => {
-    // @todo bind this
-    // window.alert(JSON.stringify(values))
-    // console.log(values)
+    console.log(values)
     configNotifications(values)
   }
-  //to get current settings
-  const [listNotification, notificationListResult] = useLazyListNotificationConfigQuery()
-  //todo: Replace with prettier sliders etc
   return (
     <>
       {notificationListResult.isUninitialized && listNotification()}
@@ -768,7 +862,13 @@ const NotificationsSettings = () => {
           </CCardHeader>
           <CCardBody>
             <Form
-              initialValues={{ ...notificationListResult.data }}
+              initialValues={{
+                ...notificationListResult.data,
+                logsToInclude: notificationListResult.data?.logsToInclude?.map((m) => ({
+                  label: m,
+                  value: m,
+                })),
+              }}
               onSubmit={onSubmit}
               render={({ handleSubmit, submitting, values }) => {
                 return (
@@ -793,48 +893,35 @@ const NotificationsSettings = () => {
                       <CCol>
                         <RFFCFormInput type="text" name="webhook" label="Webhook" />
                       </CCol>
-                      <CFormLabel>
-                        Choose which types of updates you want to receive. This notification will be
-                        sent every 30 minutes.
-                      </CFormLabel>
-                      <br />
-                      <RFFCFormSwitch
-                        name="addUser"
-                        label="New Accounts created via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="removeUser"
-                        label="Removed Accounts via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="addChocoApp"
-                        label="New Applications added via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="addPolicy"
-                        label="New Policies added via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="addStandardsDeploy"
-                        label="New Standards added via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="removeStandard"
-                        label="Removed Standards via CIPP"
-                        value={false}
-                      />
-                      <RFFCFormSwitch
-                        name="tokenUpdater"
-                        label="Token Refresh Events"
-                        value={false}
-                      />
-
-                      <br></br>
+                      <CCol>
+                        <RFFSelectSearch
+                          multi={true}
+                          label="Choose which logs you'd like to receive alerts from. This notification will be sent every 15 minutes."
+                          name="logsToInclude"
+                          values={[
+                            { value: 'Standards', name: 'All Standards' },
+                            { value: 'TokensUpdater', name: 'Token Events' },
+                            { value: 'ExecDnsConfig', name: 'Changing DNS Settings' },
+                            { value: 'ExecExcludeLicenses', name: 'Adding excluded licenses' },
+                            { value: 'ExecExcludeTenant', name: 'Adding excluded tenants' },
+                            { value: 'EditUser', name: 'Editing a user' },
+                            { value: 'ChocoApp', name: 'Adding or deploying applications' },
+                            { value: 'AddAPDevice', name: 'Adding autopilot devices' },
+                            { value: 'EditTenant', name: 'Editing a tenant' },
+                            { value: 'AddMSPApp', name: 'Adding an MSP app' },
+                            { value: 'AddUser', name: 'Adding a user' },
+                            { value: 'AddGroup', name: 'Adding a group' },
+                            { value: 'ExecOffboardUser', name: 'Executing the offboard wizard' },
+                          ]}
+                        />
+                      </CCol>
+                      <CCol>
+                        <RFFCFormSwitch
+                          name="onePerTenant"
+                          label="Receive one email per tenant"
+                          value={false}
+                        />
+                      </CCol>
                       <CButton disabled={notificationConfigResult.isFetching} type="submit">
                         Set Notification Settings
                       </CButton>
